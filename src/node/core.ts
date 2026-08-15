@@ -10,6 +10,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { AgentPresets } from '@deepseek-ai/dsh-agent-presets'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval'
@@ -114,10 +115,35 @@ export class WechatConversationNode {
   /** Create a fresh agent+session via the agent factory and make it active. */
   async createSession(prompt: string): Promise<void> {
     const sessionId = newSessionId(this)
-    const meta: Record<string, string> = {}
-    if (this.config.cwd) meta.cwd = this.config.cwd
-    if (this.config.agentPreset) meta.agentPreset = this.config.agentPreset
     try {
+      const meta: Record<string, string> = {}
+      if (this.config.cwd) meta.cwd = this.config.cwd
+
+      // Recording `agentPreset` in the session meta alone is NOT enough: the
+      // harness only composes the preset when a setup hook calls
+      // `agentPresets.mount()` before publication. Without that join the
+      // agent publishes against the empty global layer — no tools, prompt
+      // sections, or skill catalog (the host logs a warning), and the model
+      // cannot execute anything. Mirror the Web host's `composeAgent`:
+      // resolve the configured preset (or the deployment default) and mount
+      // it from the factory setup hook.
+      const presets = this.ctx.get('agentPresets') as AgentPresets | undefined
+      let setup: ((agentCtx: Context) => Promise<void>) | undefined
+      if (presets) {
+        const wanted = this.config.agentPreset ?? presets.defaultId
+        if (wanted) {
+          const mountId = (await presets.resolve(wanted)).id
+          meta.agentPreset = mountId
+          setup = async (agentCtx: Context) => {
+            await presets.mount(agentCtx, mountId)
+          }
+        }
+      } else if (this.config.agentPreset) {
+        // No preset roster in this host composition: keep the header record,
+        // the host's own composition decides what the agent sees.
+        meta.agentPreset = this.config.agentPreset
+      }
+
       const handle = await this.ctx.agents.create({
         sessionId,
         meta,
@@ -125,6 +151,7 @@ export class WechatConversationNode {
           ...(this.config.agentProvider ? { provider: this.config.agentProvider } : {}),
           ...(this.config.agentModel ? { model: this.config.agentModel } : {}),
         },
+        ...(setup === void 0 ? {} : { setup }),
       })
       this.activeSessionId = handle.agent.session.id
       if (prompt) {
