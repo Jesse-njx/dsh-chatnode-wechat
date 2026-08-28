@@ -21,7 +21,8 @@
  */
 import { Service, Context } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
-import { type InboundMessage, type WechatCredentials } from './types.ts';
+import { type InboundMessage, type WechatCredentials, type WireItem } from './types.ts';
+import { type RasterImageMediaType } from './media.ts';
 /** Gateway connection lifecycle, surfaced as `wechat/status` events. */
 export type GatewayStatus = 'idle' | 'starting' | 'connected' | 'reconnecting' | 'paused' | 'error';
 /** Outcome of one outbound text delivery. */
@@ -235,6 +236,25 @@ export declare class WechatGateway extends Service {
      * (`../node/outbound.ts`); this method sends exactly one bubble.
      */
     sendText(to: string, text: string, clientId?: string): Promise<SendResult>;
+    /**
+     * Download and decrypt one inbound image item into raw bytes. Uses the
+     * gateway's configured CDN base + allowlist so the node layer never touches
+     * the wire or the SSRF guard directly.
+     * @returns decoded bytes and detected media type, or null when the item
+     *   carries no usable media reference.
+     */
+    downloadImage(item: WireItem): Promise<{
+        bytes: Uint8Array;
+        mediaType: RasterImageMediaType;
+    } | null>;
+    /**
+     * Send one image file to a peer: AES-encrypt → getuploadurl ticket → upload
+     * ciphertext to the CDN → sendmessage with an image item. Uses the peer's
+     * cached context_token (the wire REQUIRES it — tokenless sends fail with
+     * ret=-2 "prepare failed"), with session-expired and rate-limit handling
+     * mirroring {@link sendText}.
+     */
+    sendImage(to: string, filePath: string): Promise<SendResult>;
     /** Show or hide the typing indicator for a peer (best-effort). */
     sendTyping(to: string, status: 1 | 2): Promise<void>;
     /** Fetch (or refresh) the 600s-TTL typing ticket for a peer. */

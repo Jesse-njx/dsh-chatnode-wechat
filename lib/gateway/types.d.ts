@@ -23,6 +23,7 @@ export declare const EP_GET_UPDATES = "ilink/bot/getupdates";
 export declare const EP_SEND_MESSAGE = "ilink/bot/sendmessage";
 export declare const EP_SEND_TYPING = "ilink/bot/sendtyping";
 export declare const EP_GET_CONFIG = "ilink/bot/getconfig";
+export declare const EP_GET_UPLOAD_URL = "ilink/bot/getuploadurl";
 export declare const EP_GET_BOT_QR = "ilink/bot/get_bot_qrcode";
 export declare const EP_GET_QR_STATUS = "ilink/bot/get_qrcode_status";
 /** Long-poll window for getUpdates (server may suggest a different value). */
@@ -38,6 +39,8 @@ export declare const ITEM_IMAGE = 2;
 export declare const ITEM_VOICE = 3;
 export declare const ITEM_FILE = 4;
 export declare const ITEM_VIDEO = 5;
+/** Media type ids for getuploadurl (mirrors hermes MEDIA_*). */
+export declare const MEDIA_IMAGE = 1;
 export declare const MSG_TYPE_USER = 1;
 export declare const MSG_TYPE_BOT = 2;
 export declare const MSG_STATE_FINISH = 2;

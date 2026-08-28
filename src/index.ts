@@ -48,7 +48,7 @@ export { listSessions } from './node/commands.ts'
 export const name = 'dsh-chatnode-wechat'
 
 /** Services the bundle needs (provided by dsh-base). */
-export const inject = ['sessions', 'agents', 'approval', 'credentials']
+export const inject = ['sessions', 'agents', 'approval', 'credentials', 'sessionTitle']
 
 /** Bundle config: gateway fields plus the node's `allowFrom` policy. */
 export interface Config {

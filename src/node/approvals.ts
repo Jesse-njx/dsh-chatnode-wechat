@@ -16,6 +16,7 @@
 import type { ApprovalOutcome, ApprovalRequest } from '@deepseek-ai/dsh-user-approval'
 import type { WechatConversationNode } from './core.ts'
 import { sendTextToPeer } from './outbound.ts'
+import { sessionBadge } from './labels.ts'
 
 /** One pending approval awaiting a WeChat reply. */
 export interface PendingApproval {
@@ -36,7 +37,7 @@ export function attachApprovalBridge(node: WechatConversationNode): () => void {
     const number = node.nextApprovalNumber()
     const timeoutSec = node.config.approvalTimeoutSec
     const prompt = [
-      `🔐 #${number} 需要你的确认`,
+      `🔐 ${sessionBadge(node, req.agent.session)} #${number} 需要你的确认`,
       `工具: ${req.toolName}`,
       ...(req.reason ? [`原因: ${req.reason}`] : []),
       `回复 /yes 同意，/no 拒绝（仅一条待确认时也可回复 1/2）`,
@@ -56,7 +57,7 @@ export function attachApprovalBridge(node: WechatConversationNode): () => void {
     })
 
     const label = outcome === 'allowed-once' ? '✅ 已同意' : outcome === 'rejected' ? '❌ 已拒绝' : `⏳ ${outcome}`
-    void sendTextToPeer(node, `${label}（#${number}）`)
+    void sendTextToPeer(node, `${label} ${sessionBadge(node, req.agent.session)}（#${number}）`)
     return outcome
   }
 

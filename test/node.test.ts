@@ -7,14 +7,20 @@
 
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId, type Session } from '@deepseek-ai/dsh-session'
 import AgentRegistry, { type Agent, type AgentFactory } from '@deepseek-ai/dsh-agent'
 import ApprovalService from '@deepseek-ai/dsh-user-approval'
+import SessionTitleService from '@deepseek-ai/dsh-session-title'
+import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { createAssistantMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { WechatGateway } from '../src/gateway/index.ts'
 import { wechatConversationNode } from '../src/node/index.ts'
-import { startFakeIlinkServer, type FakeIlinkServer } from './fake-ilink-server.ts'
+import { startFakeIlinkServer, mediaKey, type FakeIlinkServer } from './fake-ilink-server.ts'
 import type { InboundMessage } from '../src/gateway/types.ts'
 import { splitForWechat } from '../src/node/outbound.ts'
 
@@ -84,11 +90,15 @@ beforeEach(async () => {
   await ctx.plugin(AgentRegistry)
   ctx.agents.setFactory(factory)
   await ctx.plugin(ApprovalService)
+  await ctx.plugin(SessionTitleService, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
+  await ctx.plugin(SystemPrompt)
+  await ctx.plugin(ToolRuntime)
   await ctx.plugin(WechatGateway, {
     token: 'test-token',
     accountId: 'wxid_bot_fake',
     baseUrl: server.url,
     cdnBaseUrl: server.url,
+    allowCdnHosts: ['127.0.0.1'],
     pollIdleDelayMs: 5,
     longPollTimeoutMs: 1000,
   })
@@ -191,6 +201,7 @@ test('assistant/message outbound is delivered to the peer with a task-started di
   await waitFor(() => followedUp.length === 1)
 
   const session = activeHandle.agent.session
+  session.append('user/message', { content: [{ type: 'text', text: 'first task' }], source: { kind: 'user' } }, { surfaceOp: 'append' })
   session.append('turn/start', { turn: 1 })
   session.append('assistant/message', {
     turn: 1,
@@ -200,8 +211,12 @@ test('assistant/message outbound is delivered to the peer with a task-started di
   session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
 
   await waitFor(() => sentTexts().some((t) => t === 'the answer'))
-  assert.ok(sentTexts().includes('⏳ 收到，开始处理…'))
-  assert.ok(sentTexts().indexOf('⏳ 收到，开始处理…') < sentTexts().indexOf('the answer'))
+  const started = sentTexts().find((t) => t.includes('收到，开始处理…'))
+  assert.ok(started, sentTexts().join('\n'))
+  // 状态消息必须携带会话 badge（名称回退标签 + 会话 id）
+  assert.ok(started.includes('first task'), started)
+  assert.ok(started.includes('session-a'), started)
+  assert.ok(sentTexts().indexOf(started) < sentTexts().indexOf('the answer'))
   // outbound targets the allowlisted sender
   assert.ok(server.sent.some((s) => s.to === 'wxid_allow1' && s.text === 'the answer'))
 })
@@ -256,6 +271,23 @@ test('/sessions lists numbered sessions and /use switches the active session', a
   await second.dispose()
 })
 
+test('/sessions prefers the real session title over the first-prompt label', async () => {
+  await mountNode()
+  ctx.sessionTitle.rename(activeHandle.agent.session, '我的自定义标题')
+  server.enqueue(textMessage('/sessions'))
+  await waitFor(() => sentTexts().some((t) => t.includes('会话列表')), 3000)
+  const list = sentTexts().find((t) => t.includes('会话列表'))!
+  assert.ok(list.includes('我的自定义标题'), list)
+  assert.ok(list.includes('session-a'), list)
+})
+
+test('/status carries the real session title and keeps the session id', async () => {
+  await mountNode()
+  ctx.sessionTitle.rename(activeHandle.agent.session, '状态标题')
+  server.enqueue(textMessage('/status'))
+  await waitFor(() => sentTexts().some((t) => t.includes('状态标题') && t.includes('session-a')), 3000)
+})
+
 test('/new creates an agent+session and follows up the prompt', async () => {
   await mountNode()
   const before = createdSessions.length
@@ -265,7 +297,8 @@ test('/new creates an agent+session and follows up the prompt', async () => {
   await waitFor(() => followedUp.length === 1)
   const text = (followedUp[0]!.content[0] as { text: string }).text
   assert.equal(text, '写一个 hello world')
-  assert.ok(sentTexts().some((t) => t.includes('已创建新会话')))
+  // the confirmation is delivered asynchronously after the followup
+  await waitFor(() => sentTexts().some((t) => t.includes('已创建新会话')), 3000)
 })
 
 test('/new mounts the configured agent preset through the factory setup hook', async () => {
@@ -305,7 +338,8 @@ test('/stop cancels the active agent', async () => {
   await mountNode()
   server.enqueue(textMessage('/stop'))
   await waitFor(() => cancelled === true, 3000)
-  assert.ok(sentTexts().some((t) => t.includes('已请求停止')))
+  // the confirmation is delivered asynchronously after the cancel
+  await waitFor(() => sentTexts().some((t) => t.includes('已请求停止')), 3000)
 })
 
 test('/status reports the active session', async () => {
@@ -372,6 +406,9 @@ test('digest heartbeat emits a one-line summary while a turn runs', async () => 
   await nodeCtx.plugin(AgentRegistry)
   nodeCtx.agents.setFactory(factory)
   await nodeCtx.plugin(ApprovalService)
+  await nodeCtx.plugin(SessionTitleService, { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 })
+  await nodeCtx.plugin(SystemPrompt)
+  await nodeCtx.plugin(ToolRuntime)
   await nodeCtx.plugin(WechatGateway, { token: 't', accountId: 'wxid_bot_fake', baseUrl: server.url, pollIdleDelayMs: 5 })
   // The factory creates sessions/agents in the CURRENT runtime context, so
   // point it at nodeCtx — otherwise appends would dispatch on the outer bus
@@ -390,4 +427,36 @@ test('digest heartbeat emits a one-line summary while a turn runs', async () => 
   session.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
   await handle.dispose()
   await nodeCtx.wechat.stop()
+})
+
+test('image-only message: download, save to mediaDir, route path to the agent', async () => {
+  const mediaDir = join(tmpdir(), `dsh-wechat-media-${Date.now()}`)
+  await mountNode({ mediaDir })
+  // minimal PNG magic bytes — enough for media-type detection (not a decodable image)
+  const plaintext = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4])
+  const key = mediaKey()
+  server.media.set('eqp-img-node', { key, plaintext })
+  server.enqueue({
+    from_user_id: 'wxid_allow1',
+    to_user_id: 'wxid_bot_fake',
+    message_id: 'msg-img-node',
+    msg_type: 1,
+    context_token: 'ctx-img-node',
+    item_list: [{
+      type: 2,
+      image_item: {
+        media: {
+          encrypt_query_param: 'eqp-img-node',
+          aes_key: Buffer.from(key).toString('base64'),
+        },
+      },
+    }],
+  })
+  await waitFor(() => followedUp.length === 1, 3000)
+  const text = (followedUp[0]!.content[0] as { text: string }).text
+  const match = /\[微信图片\]\s*(\S+)/.exec(text)
+  assert.ok(match, `followup should carry an image path, got: ${text}`)
+  const absPath = match![1]!
+  assert.ok(absPath.endsWith('.png'), `expected .png path, got: ${absPath}`)
+  assert.deepEqual([...readFileSync(absPath)], [...plaintext])
 })

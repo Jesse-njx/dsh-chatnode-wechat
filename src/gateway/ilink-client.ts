@@ -22,6 +22,7 @@ import {
   EP_GET_CONFIG,
   EP_GET_QR_STATUS,
   EP_GET_UPDATES,
+  EP_GET_UPLOAD_URL,
   EP_SEND_MESSAGE,
   EP_SEND_TYPING,
   ILINK_APP_CLIENT_VERSION,
@@ -32,6 +33,7 @@ import {
   MSG_TYPE_BOT,
   QR_TIMEOUT_MS,
   ITEM_TEXT,
+  ITEM_IMAGE,
   type GetUpdatesResponse,
   type QrCodeResponse,
   type QrStatusResponse,
@@ -214,6 +216,124 @@ export async function sendMessage(opts: {
     message_type: MSG_TYPE_BOT,
     message_state: MSG_STATE_FINISH,
     item_list: [{ type: ITEM_TEXT, text_item: { text } }],
+  }
+  if (contextToken) msg.context_token = contextToken
+  return postJson<SendMessageResponse>({
+    baseUrl,
+    endpoint: EP_SEND_MESSAGE,
+    payload: { msg },
+    token,
+    timeoutMs,
+    fetchImpl,
+  })
+}
+
+/** Request a CDN upload ticket for one media file. */
+export async function getUploadUrl(opts: {
+  baseUrl?: string
+  token: string
+  to: string
+  mediaType: number
+  filekey: string
+  rawsize: number
+  rawfilemd5: string
+  filesize: number
+  aeskeyHex: string
+  timeoutMs?: number
+  fetchImpl?: typeof fetch
+}): Promise<{ uploadParam?: string; uploadFullUrl?: string }> {
+  const { baseUrl, token, to, mediaType, filekey, rawsize, rawfilemd5, filesize, aeskeyHex, timeoutMs, fetchImpl } = opts
+  const raw = await postJson<{ upload_param?: string; upload_full_url?: string }>({
+    baseUrl,
+    endpoint: EP_GET_UPLOAD_URL,
+    payload: {
+      filekey,
+      media_type: mediaType,
+      to_user_id: to,
+      rawsize,
+      rawfilemd5,
+      filesize,
+      no_need_thumb: true,
+      aeskey: aeskeyHex,
+    },
+    token,
+    timeoutMs,
+    fetchImpl,
+  })
+  return { uploadParam: raw.upload_param, uploadFullUrl: raw.upload_full_url }
+}
+
+/**
+ * Upload encrypted media bytes to the WeChat CDN.
+ * POST first; a 404 falls back to PUT (the CDN changed its method at some
+ * point). The download key is returned in the `x-encrypted-param` response
+ * header; when the header is missing the filekey itself is the key (per the
+ * hermes-agent reference).
+ */
+export async function uploadCiphertext(opts: {
+  uploadUrl: string
+  ciphertext: Uint8Array
+  filekey: string
+  timeoutMs?: number
+  fetchImpl?: typeof fetch
+}): Promise<string> {
+  const { uploadUrl, ciphertext, filekey, timeoutMs = 120_000, fetchImpl = fetch } = opts
+  for (const method of ['POST', 'PUT'] as const) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetchImpl(uploadUrl, {
+        method,
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: Buffer.from(ciphertext),
+        signal: controller.signal,
+      })
+      if (response.status === 404 && method === 'POST') continue
+      if (!response.ok) throw new Error(`CDN upload HTTP ${response.status}`)
+      const param = response.headers.get('x-encrypted-param')
+      return param && param.trim() ? param : filekey
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw new Error('CDN upload failed with both POST and PUT')
+}
+
+/** Send one image-item message to a peer. */
+export async function sendImageMessage(opts: {
+  baseUrl?: string
+  token: string
+  to: string
+  encryptQueryParam: string
+  /** base64(ascii(hex(aesKey))) — NOT base64(raw key bytes). */
+  aesKeyB64Hex: string
+  ciphertextSize: number
+  contextToken?: string
+  clientId: string
+  timeoutMs?: number
+  fetchImpl?: typeof fetch
+}): Promise<SendMessageResponse> {
+  const {
+    baseUrl, token, to, encryptQueryParam, aesKeyB64Hex, ciphertextSize,
+    contextToken, clientId, timeoutMs, fetchImpl,
+  } = opts
+  const msg: Record<string, unknown> = {
+    from_user_id: '',
+    to_user_id: to,
+    client_id: clientId,
+    message_type: MSG_TYPE_BOT,
+    message_state: MSG_STATE_FINISH,
+    item_list: [{
+      type: ITEM_IMAGE,
+      image_item: {
+        media: {
+          encrypt_query_param: encryptQueryParam,
+          aes_key: aesKeyB64Hex,
+          encrypt_type: 1,
+        },
+        mid_size: ciphertextSize,
+      },
+    }],
   }
   if (contextToken) msg.context_token = contextToken
   return postJson<SendMessageResponse>({

@@ -25,6 +25,8 @@ export interface NodeConfig {
     sendChunkDelayMs: number;
     /** Working directory for `/new` sessions. */
     cwd?: string;
+    /** Directory inbound images are saved to (defaults under $DSH_HOME). */
+    mediaDir?: string;
     /** Agent preset name for `/new` sessions. */
     agentPreset?: string;
     /** Provider route for `/new` agents. */

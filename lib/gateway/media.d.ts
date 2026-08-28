@@ -27,6 +27,8 @@ export declare function aes128EcbDecrypt(ciphertext: Uint8Array, key: Uint8Array
 export declare function parseAesKey(aesKeyBase64: string): Uint8Array;
 /** Build the CDN download URL for an encrypted media reference. */
 export declare function cdnDownloadUrl(cdnBaseUrl: string, encryptedQueryParam: string): string;
+/** Build the CDN upload URL from a getuploadurl `upload_param` + filekey. */
+export declare function cdnUploadUrl(cdnBaseUrl: string, uploadParam: string, filekey: string): string;
 /**
  * Assert a media URL points at a known WeChat CDN host over http(s).
  * @throws on anything else (SSRF guard, mirrors hermes-agent's allowlist).
@@ -50,4 +52,14 @@ export declare function downloadMedia(opts: {
 }): Promise<Uint8Array>;
 /** Best-effort mime guess from a file name. */
 export declare function mimeFromFilename(filename: string): string;
+/** Raster image media types we can hand to the model's vision path. */
+export type RasterImageMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+/**
+ * Detect a raster image's media type from its magic bytes. WeChat CDN images
+ * are usually JPEG, but PNG/WebP/GIF also occur; the type drives both the
+ * on-disk extension and the vision tool's decoding.
+ */
+export declare function detectImageMediaType(bytes: Uint8Array): RasterImageMediaType | null;
+/** File extension for a detected raster image media type (no leading dot). */
+export declare function imageExt(mediaType: RasterImageMediaType): string;
 //# sourceMappingURL=media.d.ts.map

@@ -19,6 +19,7 @@ import type { AssistantMessage } from '@deepseek-ai/dsh-llm'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import { MAX_MESSAGE_CHARS } from '../gateway/types.ts'
 import type { WechatConversationNode } from './core.ts'
+import { sessionBadge } from './labels.ts'
 
 // ---------------------------------------------------------------------------
 // Chunking (port of hermes-agent `_split_text_for_weixin_delivery`, compact)
@@ -166,7 +167,7 @@ export function textOfAssistantMessage(message: AssistantMessage): string {
 // ---------------------------------------------------------------------------
 
 /** One-line progress summary derived from the session log (cheap, replayable). */
-export function digestLine(session: Session): string {
+export function digestLine(session: Session, badge?: string): string {
   let turn = 0
   let tools = 0
   let lastTool: string | undefined
@@ -186,7 +187,8 @@ export function digestLine(session: Session): string {
   }
   const steps = tools > 0 ? `${tools} 个工具调用` : '思考中'
   const last = lastTool ? ` · 最近: ${lastTool}` : ''
-  return `🔄 仍在处理中…（第 ${turn} 轮 · ${steps}${last}）`
+  const prefix = badge ? `${badge} ` : ''
+  return `${prefix}🔄 仍在处理中…（第 ${turn} 轮 · ${steps}${last}）`
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +250,7 @@ export function attachSessionOutbound(node: WechatConversationNode): () => void 
     stopHeartbeat(state)
     if (node.config.digestIntervalSec <= 0) return
     state.heartbeat = setInterval(() => {
-      void sendTextToPeer(node, digestLine(session))
+      void sendTextToPeer(node, digestLine(session, sessionBadge(node, session)))
     }, node.config.digestIntervalSec * 1000)
     state.heartbeat.unref?.()
   }
@@ -262,7 +264,7 @@ export function attachSessionOutbound(node: WechatConversationNode): () => void 
       const turn = event.data.turn
       if (!state.startedTurns.has(turn)) {
         state.startedTurns.add(turn)
-        void sendTextToPeer(node, '⏳ 收到，开始处理…')
+        void sendTextToPeer(node, `⏳ ${sessionBadge(node, session)} 收到，开始处理…`)
       }
       startHeartbeat(session, state)
       return
@@ -276,11 +278,11 @@ export function attachSessionOutbound(node: WechatConversationNode): () => void 
       stopHeartbeat(state)
       const reason = event.data.reason
       if (reason.kind === 'error') {
-        void sendTextToPeer(node, `❌ 处理出错: ${summarizeError(reason.error)}`)
+        void sendTextToPeer(node, `❌ ${sessionBadge(node, session)} 处理出错: ${summarizeError(reason.error)}`)
       } else if (reason.kind === 'aborted') {
-        void sendTextToPeer(node, '⏹ 已停止')
+        void sendTextToPeer(node, `⏹ ${sessionBadge(node, session)} 已停止`)
       } else if (reason.kind === 'max-tokens') {
-        void sendTextToPeer(node, '⚠️ 达到输出上限，本轮已截断')
+        void sendTextToPeer(node, `⚠️ ${sessionBadge(node, session)} 达到输出上限，本轮已截断`)
       }
       return
     }

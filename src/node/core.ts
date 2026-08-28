@@ -19,6 +19,7 @@ import { attachApprovalBridge } from './approvals.ts'
 import { attachSessionOutbound, sendTextToPeer } from './outbound.ts'
 import { handleInbound } from './inbound.ts'
 import { listSessions, newSessionId } from './commands.ts'
+import { sessionBadge } from './labels.ts'
 import type { InboundMessage } from '../gateway/types.ts'
 
 /** Runtime shape of the node plugin's config (defaults applied). */
@@ -35,6 +36,8 @@ export interface NodeConfig {
   sendChunkDelayMs: number
   /** Working directory for `/new` sessions. */
   cwd?: string
+  /** Directory inbound images are saved to (defaults under $DSH_HOME). */
+  mediaDir?: string
   /** Agent preset name for `/new` sessions. */
   agentPreset?: string
   /** Provider route for `/new` agents. */
@@ -160,7 +163,7 @@ export class WechatConversationNode {
           source: { kind: 'user' },
         }))
       }
-      await sendTextToPeer(this, `✅ 已创建新会话 ${handle.agent.session.id}${prompt ? '，开始处理…' : '（无初始提示词）'}`)
+      await sendTextToPeer(this, `✅ 已创建新会话 ${sessionBadge(this, handle.agent.session)}${prompt ? '，开始处理…' : '（无初始提示词）'}`)
     } catch (error) {
       await sendTextToPeer(this, `❌ 创建会话失败: ${error instanceof Error ? error.message : String(error)}`)
     }

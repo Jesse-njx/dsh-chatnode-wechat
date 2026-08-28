@@ -26,7 +26,7 @@ export declare function splitForWechat(content: string, max?: number): string[];
 /** Extract the visible text of an assistant message. */
 export declare function textOfAssistantMessage(message: AssistantMessage): string;
 /** One-line progress summary derived from the session log (cheap, replayable). */
-export declare function digestLine(session: Session): string;
+export declare function digestLine(session: Session, badge?: string): string;
 /** Send text to the current peer, chunked and throttled. */
 export declare function sendTextToPeer(node: WechatConversationNode, text: string): Promise<void>;
 /**

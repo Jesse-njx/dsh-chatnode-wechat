@@ -72,6 +72,51 @@ export declare function sendMessage(opts: {
     timeoutMs?: number;
     fetchImpl?: typeof fetch;
 }): Promise<SendMessageResponse>;
+/** Request a CDN upload ticket for one media file. */
+export declare function getUploadUrl(opts: {
+    baseUrl?: string;
+    token: string;
+    to: string;
+    mediaType: number;
+    filekey: string;
+    rawsize: number;
+    rawfilemd5: string;
+    filesize: number;
+    aeskeyHex: string;
+    timeoutMs?: number;
+    fetchImpl?: typeof fetch;
+}): Promise<{
+    uploadParam?: string;
+    uploadFullUrl?: string;
+}>;
+/**
+ * Upload encrypted media bytes to the WeChat CDN.
+ * POST first; a 404 falls back to PUT (the CDN changed its method at some
+ * point). The download key is returned in the `x-encrypted-param` response
+ * header; when the header is missing the filekey itself is the key (per the
+ * hermes-agent reference).
+ */
+export declare function uploadCiphertext(opts: {
+    uploadUrl: string;
+    ciphertext: Uint8Array;
+    filekey: string;
+    timeoutMs?: number;
+    fetchImpl?: typeof fetch;
+}): Promise<string>;
+/** Send one image-item message to a peer. */
+export declare function sendImageMessage(opts: {
+    baseUrl?: string;
+    token: string;
+    to: string;
+    encryptQueryParam: string;
+    /** base64(ascii(hex(aesKey))) — NOT base64(raw key bytes). */
+    aesKeyB64Hex: string;
+    ciphertextSize: number;
+    contextToken?: string;
+    clientId: string;
+    timeoutMs?: number;
+    fetchImpl?: typeof fetch;
+}): Promise<SendMessageResponse>;
 /** Fetch the per-peer typing ticket (600s TTL) used by sendTyping. */
 export declare function getConfig(opts: {
     baseUrl?: string;

@@ -92,6 +92,11 @@ export function cdnDownloadUrl(cdnBaseUrl: string, encryptedQueryParam: string):
   return `${cdnBaseUrl.replace(/\/+$/, '')}/download?encrypted_query_param=${encodeURIComponent(encryptedQueryParam)}`
 }
 
+/** Build the CDN upload URL from a getuploadurl `upload_param` + filekey. */
+export function cdnUploadUrl(cdnBaseUrl: string, uploadParam: string, filekey: string): string {
+  return `${cdnBaseUrl.replace(/\/+$/, '')}/upload?encrypted_query_param=${encodeURIComponent(uploadParam)}&filekey=${encodeURIComponent(filekey)}`
+}
+
 /**
  * Assert a media URL points at a known WeChat CDN host over http(s).
  * @throws on anything else (SSRF guard, mirrors hermes-agent's allowlist).
@@ -171,4 +176,35 @@ export function mimeFromFilename(filename: string): string {
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   }
   return table[ext] ?? 'application/octet-stream'
+}
+
+/** Raster image media types we can hand to the model's vision path. */
+export type RasterImageMediaType = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+
+/**
+ * Detect a raster image's media type from its magic bytes. WeChat CDN images
+ * are usually JPEG, but PNG/WebP/GIF also occur; the type drives both the
+ * on-disk extension and the vision tool's decoding.
+ */
+export function detectImageMediaType(bytes: Uint8Array): RasterImageMediaType | null {
+  const b = bytes
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg'
+  if (b.length >= 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'image/png'
+  if (b.length >= 4 && b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return 'image/gif'
+  if (
+    b.length >= 12 &&
+    b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && // "RIFF"
+    b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50 // "WEBP"
+  ) return 'image/webp'
+  return null
+}
+
+/** File extension for a detected raster image media type (no leading dot). */
+export function imageExt(mediaType: RasterImageMediaType): string {
+  switch (mediaType) {
+    case 'image/jpeg': return 'jpg'
+    case 'image/png': return 'png'
+    case 'image/webp': return 'webp'
+    case 'image/gif': return 'gif'
+  }
 }

@@ -4,7 +4,8 @@
 
 一个 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
 bundle，通过腾讯非官方 **iLink bot 网关**（`ilinkai.weixin.qq.com`）把 DSH
-profile 接到微信个人账号 —— 与 hermes-agent、OpenClaw 同机制。文字双向收发，
+profile 接到微信个人账号 —— 与 hermes-agent、OpenClaw 同机制。文字与图片
+双向收发（微信发图自动下载解密交给 agent，`/send` 把图片发回微信），
 支持 `/sessions /use /new /stop /status` 会话管理，权限请求直接在聊天里用
 `/yes` / `/no` 回答，进度以摘要形式推送而不是刷屏式工具调用。
 
@@ -16,7 +17,7 @@ Bundle 内含**两个可分离的 Cordis 插件**：
 
 | 插件 | 职责 |
 | --- | --- |
-| `wechat-gateway`（`WechatGateway`） | iLink 服务（`ctx.wechat`）：扫码登录、鉴权长轮询、断线重连/退避、发送重试 + 限流熔断、正在输入指示、加密 CDN 媒体下载。 |
+| `wechat-gateway`（`WechatGateway`） | iLink 服务（`ctx.wechat`）：扫码登录、鉴权长轮询、断线重连/退避、发送重试 + 限流熔断、正在输入指示、加密 CDN 媒体下载/上传（`downloadImage` / `sendImage`）。 |
 | `wechat-conversation-node` | 微信 ⇄ DSH 桥：allowlist 白名单闸门、会话定位、命令、摘要式出站（分块 + 限速）、审批。 |
 
 ## ⚠️ 先读这里
@@ -61,6 +62,7 @@ plugins:
     maxMessageChars: 2000             # 微信单条气泡上限（协议限制）
     sendChunkDelayMs: 1500            # 出站气泡间隔限速
     # cwd: /path/to/workspace         # `/new` 会话的工作目录
+    # mediaDir: /path/to/media        # 入站图片落盘目录（默认 $DSH_HOME/attachments/wechat）
     # agentPreset: <preset-name>      # `/new` 会话使用的 agent preset
     # agentProvider / agentModel: ... # `/new` agent 的模型路由
 ```
@@ -70,17 +72,28 @@ plugins:
 
 ## 用法
 
-给机器人发文字即可。只要存在至少一个会话就是零配置 —— 默认目标是
+给机器人发文字或图片即可。只要存在至少一个会话就是零配置 —— 默认目标是
 **最近的一个会话**。
+
+### 图片收发
+
+- **收图**：直接给机器人发图片，网关会下载解密（加密 CDN + AES-128-ECB），
+  落盘到 `mediaDir`（默认 `$DSH_HOME/attachments/wechat/`），并把文件路径交给
+  agent —— agent 用 `read_image`/vision 工具识别内容。
+- **发图**：`/send <绝对路径>` 把一张本地图片发回当前联系人（AES 加密 →
+  `getuploadurl` → CDN 上传 → `sendmessage`）。发送依赖该 peer 的
+  `context_token`，因此由网关进程内执行。
 
 | 命令 | 作用 |
 | --- | --- |
 | *(普通文字)* | 路由到当前 agent（`agent.followup`） |
+| *(图片)* | 下载解密落盘，把文件路径交给 agent 识别 |
 | `/sessions` | 编号会话列表（最近优先） |
 | `/use N` | 切换活动会话 |
 | `/new <prompt>` | 新建 agent+会话并开始 |
 | `/stop` | 取消当前任务 |
 | `/status` | agent 状态 + 会话摘要 |
+| `/send <路径>` | 发送一张本地图片给当前联系人 |
 | `/yes` `/no`（仅一条待确认时也可 `1`/`2`） | 回答权限请求 |
 | `/help` | 命令列表 |
 
@@ -113,7 +126,7 @@ answerer 链继续委托。
 ```sh
 pnpm install
 pnpm -r build
-pnpm --filter @dsh-cowork/chatnode-wechat test   # 35 个测试，无需微信账号
+pnpm --filter @dsh-cowork/chatnode-wechat test   # 36 个测试，无需微信账号
 ```
 
 - `test/fake-ilink-server.ts` 实现了 iLink 端点（getupdates 长轮询、
@@ -135,7 +148,7 @@ pnpm --filter @dsh-cowork/chatnode-wechat test   # 35 个测试，无需微信�
 ## Roadmap
 
 - **v0.1（本包）**：扫码登录、双向文字、会话定位、命令、审批、摘要、白名单。
-- **v0.2**：双向图片/文件（网关已内置入站媒体下载）、出站语音回复。
+- **v0.2**：双向图片 ✅（见上文「图片收发」）、双向文件、出站语音回复。
 - **v0.3**：群聊（高风险）、多账号、hermesclaw 式共享轮询代理（与
   hermes/openclaw 共存）。
 - **后续**：复用 `node/` 层的企业微信 / 钉钉 / 飞书 bundle。

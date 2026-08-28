@@ -2,12 +2,14 @@
  * wechat-conversation-node plugin: WeChat ⇄ DSH conversation bridge.
  *
  * Consumes the `wechat` gateway service, the `sessions` store, the `agents`
- * registry, and the `approval` seam. Inbound WeChat text becomes a user
- * message on the active session; session events become digest-style WeChat
- * messages (task started, heartbeat, assistant text chunked, finished/error).
- * Commands (`/sessions /use /new /stop /status /yes /no`) are handled
- * locally. The allowlist gate lives here — non-allowlisted senders are never
- * fed to the model.
+ * registry, the `approval` seam, and the `sessionTitle` service (status
+ * messages carry the real session title with a first-prompt fallback).
+ * Inbound WeChat text becomes a user message on the active session; session
+ * events become digest-style WeChat messages (task started, heartbeat,
+ * assistant text chunked, finished/error). Commands
+ * (`/sessions /use /new /stop /status /yes /no`) are handled locally. The
+ * allowlist gate lives here — non-allowlisted senders are never fed to the
+ * model.
  *
  * @module @dsh-cowork/chatnode-wechat/node
  */
@@ -27,6 +29,8 @@ export interface Config {
     sendChunkDelayMs?: number;
     /** Working directory for `/new` sessions. */
     cwd?: string;
+    /** Directory inbound images are saved to (defaults under $DSH_HOME). */
+    mediaDir?: string;
     /** Agent preset name for `/new` sessions. */
     agentPreset?: string;
     /** Provider route for `/new` agents. */
@@ -41,6 +45,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     maxMessageChars: z<number, number>;
     sendChunkDelayMs: z<number, number>;
     cwd: z<string, string>;
+    mediaDir: z<string, string>;
     agentPreset: z<string, string>;
     agentProvider: z<string, string>;
     agentModel: z<string, string>;
@@ -51,6 +56,7 @@ export declare const Config: z<Schemastery.ObjectS<{
     maxMessageChars: z<number, number>;
     sendChunkDelayMs: z<number, number>;
     cwd: z<string, string>;
+    mediaDir: z<string, string>;
     agentPreset: z<string, string>;
     agentProvider: z<string, string>;
     agentModel: z<string, string>;
@@ -72,6 +78,7 @@ export declare const wechatConversationNode: {
         maxMessageChars: z<number, number>;
         sendChunkDelayMs: z<number, number>;
         cwd: z<string, string>;
+        mediaDir: z<string, string>;
         agentPreset: z<string, string>;
         agentProvider: z<string, string>;
         agentModel: z<string, string>;
@@ -82,6 +89,7 @@ export declare const wechatConversationNode: {
         maxMessageChars: z<number, number>;
         sendChunkDelayMs: z<number, number>;
         cwd: z<string, string>;
+        mediaDir: z<string, string>;
         agentPreset: z<string, string>;
         agentProvider: z<string, string>;
         agentModel: z<string, string>;

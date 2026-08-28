@@ -25,6 +25,7 @@ export const EP_GET_UPDATES = 'ilink/bot/getupdates'
 export const EP_SEND_MESSAGE = 'ilink/bot/sendmessage'
 export const EP_SEND_TYPING = 'ilink/bot/sendtyping'
 export const EP_GET_CONFIG = 'ilink/bot/getconfig'
+export const EP_GET_UPLOAD_URL = 'ilink/bot/getuploadurl'
 export const EP_GET_BOT_QR = 'ilink/bot/get_bot_qrcode'
 export const EP_GET_QR_STATUS = 'ilink/bot/get_qrcode_status'
 
@@ -42,6 +43,9 @@ export const ITEM_IMAGE = 2
 export const ITEM_VOICE = 3
 export const ITEM_FILE = 4
 export const ITEM_VIDEO = 5
+
+/** Media type ids for getuploadurl (mirrors hermes MEDIA_*). */
+export const MEDIA_IMAGE = 1
 
 export const MSG_TYPE_USER = 1
 export const MSG_TYPE_BOT = 2
