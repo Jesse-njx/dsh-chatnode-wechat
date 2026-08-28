@@ -24,6 +24,7 @@ let runtimeCtx: Context
 let followedUp: ReturnType<typeof createUserMessage>[]
 let cancelled: boolean
 let createdSessions: string[]
+let lastCreateOptions: Parameters<AgentFactory['createAgent']>[1] | undefined
 
 function makeFakeAgent(session: Session): Agent {
   return {
@@ -54,6 +55,7 @@ function makeFakeAgent(session: Session): Agent {
  */
 const factory: AgentFactory = {
   async createAgent(ownerCtx, options) {
+    lastCreateOptions = options
     const session = runtimeCtx.sessions.create(options.sessionId, { meta: options.meta })
     createdSessions.push(session.id)
     const agent = makeFakeAgent(session)
@@ -77,6 +79,7 @@ beforeEach(async () => {
   followedUp = []
   cancelled = false
   createdSessions = []
+  lastCreateOptions = undefined
   await ctx.plugin(SessionStore)
   await ctx.plugin(AgentRegistry)
   ctx.agents.setFactory(factory)
@@ -263,6 +266,39 @@ test('/new creates an agent+session and follows up the prompt', async () => {
   const text = (followedUp[0]!.content[0] as { text: string }).text
   assert.equal(text, '写一个 hello world')
   assert.ok(sentTexts().some((t) => t.includes('已创建新会话')))
+})
+
+test('/new mounts the configured agent preset through the factory setup hook', async () => {
+  let mountedId: string | undefined
+  let mountedCtx: Context | undefined
+  ctx.provide('agentPresets', {
+    defaultId: 'standard',
+    resolve: async (id: string) => ({ id }),
+    mount: async (agentCtx: Context, id: string) => {
+      mountedId = id
+      mountedCtx = agentCtx
+    },
+  })
+  await mountNode({ agentPreset: 'standard' })
+  const before = createdSessions.length
+  server.enqueue(textMessage('/new 测试预设挂载'))
+  await waitFor(() => createdSessions.length === before + 1, 3000)
+  assert.ok(lastCreateOptions, 'createAgent must receive options')
+  assert.equal(lastCreateOptions!.meta?.agentPreset, 'standard')
+  assert.equal(typeof lastCreateOptions!.setup, 'function', 'a setup hook must mount the preset')
+  await (lastCreateOptions!.setup as (agentCtx: Context) => Promise<void>)(ctx)
+  assert.equal(mountedId, 'standard')
+  assert.equal(mountedCtx, ctx)
+})
+
+test('/new without an agentPresets service keeps the legacy no-setup shape', async () => {
+  await mountNode({ agentPreset: 'standard' })
+  const before = createdSessions.length
+  server.enqueue(textMessage('/new 无预设服务'))
+  await waitFor(() => createdSessions.length === before + 1, 3000)
+  assert.ok(lastCreateOptions, 'createAgent must receive options')
+  assert.equal(lastCreateOptions!.meta?.agentPreset, 'standard')
+  assert.equal(lastCreateOptions!.setup, undefined)
 })
 
 test('/stop cancels the active agent', async () => {
